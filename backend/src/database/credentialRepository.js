@@ -89,17 +89,23 @@ export class CredentialRepository {
      * @returns {Promise<boolean>}
      */
     async isTokenExpired(source, bufferMinutes = 5) {
+        // Validate bufferMinutes is a safe number
+        const safeBufferMinutes = parseInt(bufferMinutes, 10);
+        if (isNaN(safeBufferMinutes) || safeBufferMinutes < 0) {
+            throw new Error('bufferMinutes must be a positive number');
+        }
+
         const query = `
-            SELECT 
-                CASE 
+            SELECT
+                CASE
                     WHEN token_expires_at IS NULL THEN false
-                    WHEN token_expires_at <= NOW() + INTERVAL '${bufferMinutes} minutes' THEN true
+                    WHEN token_expires_at <= NOW() + INTERVAL '1 minute' * $2 THEN true
                     ELSE false
                 END as is_expired
             FROM api_credentials
             WHERE source = $1;`;
-        
-        const values = [source];
+
+        const values = [source, safeBufferMinutes];
         const { rows } = await pool.query(query, values);
         
         if (rows.length === 0) {
@@ -163,13 +169,20 @@ export class CredentialRepository {
      * @returns {Promise<Array>}
      */
     async findExpiredCredentials(bufferMinutes = 5) {
+        // Validate bufferMinutes is a safe number
+        const safeBufferMinutes = parseInt(bufferMinutes, 10);
+        if (isNaN(safeBufferMinutes) || safeBufferMinutes < 0) {
+            throw new Error('bufferMinutes must be a positive number');
+        }
+
         const query = `
             SELECT * FROM api_credentials
-            WHERE token_expires_at <= NOW() + INTERVAL '${bufferMinutes} minutes'
+            WHERE token_expires_at <= NOW() + INTERVAL '1 minute' * $1
             OR token_expires_at IS NULL;`;
-        
-        const { rows } = await pool.query(query);
-        
+
+        const values = [safeBufferMinutes];
+        const { rows } = await pool.query(query, values);
+
         return rows;
     }
 
