@@ -1,79 +1,209 @@
-// schemas/index.js
+// src/schemas/index.js
 
 /**
- * Unified Document structure - all data sources normalize to this format
- * @typedef {Object} UnifiedDocument
- * @property {string} document_id - Unique ID (e.g., "gmail_msg_12345")
- * @property {string} source - Data source: 'gmail', 'calendar', 'spotify'
- * @property {string} type - Document type: 'email', 'event', 'track'
- * @property {string} content - Main text content
- * @property {string} [title] - Subject/name/title (optional)
- * @property {Date} timestamp - When the original was created
- * @property {string} [author] - Creator/sender/artist (optional)
- * @property {Object} metadata - Source-specific data (JSONB)
- * @property {number[]} [embedding] - Vector embedding (1536 dimensions)
+ * Data schemas and factory functions for creating structured documents
  */
 
-/**
- * Sync result returned by connectors
- * @typedef {Object} SyncResult
- * @property {boolean} success - Whether sync succeeded
- * @property {number} documentsFetched - How many documents retrieved
- * @property {number} documentsStored - How many saved to DB
- * @property {Date} lastSyncTimestamp - Latest document timestamp
- * @property {string} [error] - Error message if failed
- */
+import {
+  validateDocument,
+  validateGmailMetadata,
+  validateCalendarMetadata,
+  validateSpotifyMetadata,
+} from "../utils/validation.js";
 
 /**
- * Search filters for querying documents
- * @typedef {Object} SearchFilters
- * @property {string[]} [sources] - Filter by sources
- * @property {Date} [startDate] - Start of date range
- * @property {Date} [endDate] - End of date range
- * @property {string} [author] - Filter by author
- * @property {number} [limit] - Max results
+ * Create a properly formatted UnifiedDocument
+ *
+ * @param {Object} params - Document parameters
+ * @param {string} params.document_id - Unique identifier (e.g., "gmail_msg_123")
+ * @param {string} params.source - Data source ("gmail" | "calendar" | "spotify")
+ * @param {string} params.type - Document type ("email" | "event" | "track")
+ * @param {string} params.content - Full text content
+ * @param {string} params.title - Title/subject/name
+ * @param {Date|string} params.timestamp - When this was created
+ * @param {string} params.author - Who created it
+ * @param {Object} params.metadata - Source-specific metadata
+ * @returns {Object} UnifiedDocument
  */
-
-/**
- * Helper to create a UnifiedDocument
- * @param {Object} params
- * @returns {UnifiedDocument}
- */
-function createUnifiedDocument({
+export function createUnifiedDocument({
+  document_id,
+  source,
+  type,
+  content,
+  title = null,
+  timestamp,
+  author = null,
+  metadata = {},
+}) {
+  const document = {
     document_id,
     source,
     type,
     content,
-    title = null,
-    timestamp,
-    author = null,
-    metadata = {}
-  }) {
-    // Validation
-    if (!document_id || !source || !type || !content || !timestamp) {
-      throw new Error('Missing required fields for UnifiedDocument');
-    }
-  
-    if (!['gmail', 'calendar', 'spotify'].includes(source)) {
-      throw new Error(`Invalid source: ${source}`);
-    }
-  
-    if (!['email', 'event', 'track'].includes(type)) {
-      throw new Error(`Invalid type: ${type}`);
-    }
-  
-    return {
-      document_id,
-      source,
-      type,
-      content,
-      title,
-      timestamp: timestamp instanceof Date ? timestamp : new Date(timestamp),
-      author,
-      metadata
-    };
-  }
-  
-  export {
-    createUnifiedDocument
+    title,
+    timestamp: timestamp instanceof Date ? timestamp : new Date(timestamp),
+    author,
+    metadata,
+    indexed: false,
+    created_at: new Date(),
+    updated_at: new Date(),
   };
+
+  // Validate the document
+  const validation = validateDocument(document);
+  if (!validation.valid) {
+    throw new Error(`Invalid document: ${validation.errors.join(", ")}`);
+  }
+
+  return document;
+}
+
+/**
+ * Create Gmail-specific metadata structure
+ */
+export function createGmailMetadata({
+  message_id,
+  thread_id,
+  from,
+  to = [],
+  cc = [],
+  bcc = [],
+  subject,
+  labels = [],
+  snippet,
+  has_attachments = false,
+  attachments = [],
+}) {
+  const metadata = {
+    gmail: {
+      message_id,
+      thread_id,
+      from,
+      to,
+      cc,
+      bcc,
+      subject,
+      labels,
+      snippet,
+      has_attachments,
+      attachments,
+    },
+  };
+
+  // Validate Gmail metadata
+  const validation = validateGmailMetadata(metadata.gmail);
+  if (!validation.valid) {
+    throw new Error(`Invalid Gmail metadata: ${validation.errors.join(", ")}`);
+  }
+
+  return metadata;
+}
+
+/**
+ * Create Calendar-specific metadata structure
+ */
+export function createCalendarMetadata({
+  event_id,
+  calendar_id,
+  summary,
+  description = "",
+  location = "",
+  start_time,
+  end_time,
+  attendees = [],
+  organizer = null,
+  recurrence = null,
+  is_all_day = false,
+}) {
+  const metadata = {
+    calendar: {
+      event_id,
+      calendar_id,
+      summary,
+      description,
+      location,
+      start_time:
+        start_time instanceof Date ? start_time : new Date(start_time),
+      end_time: end_time instanceof Date ? end_time : new Date(end_time),
+      attendees,
+      organizer,
+      recurrence,
+      is_all_day,
+    },
+  };
+
+  // Validate Calendar metadata
+  const validation = validateCalendarMetadata(metadata.calendar);
+  if (!validation.valid) {
+    throw new Error(
+      `Invalid Calendar metadata: ${validation.errors.join(", ")}`
+    );
+  }
+
+  return metadata;
+}
+
+/**
+ * Create Spotify-specific metadata structure
+ */
+export function createSpotifyMetadata({
+  track_id,
+  track_name,
+  artist,
+  album,
+  duration_ms,
+  played_at,
+  audio_features = null,
+}) {
+  const metadata = {
+    spotify: {
+      track_id,
+      track_name,
+      artist,
+      album,
+      duration_ms,
+      played_at: played_at instanceof Date ? played_at : new Date(played_at),
+      audio_features: audio_features || {
+        danceability: null,
+        energy: null,
+        valence: null,
+        tempo: null,
+      },
+    },
+  };
+
+  // Validate Spotify metadata
+  const validation = validateSpotifyMetadata(metadata.spotify);
+  if (!validation.valid) {
+    throw new Error(
+      `Invalid Spotify metadata: ${validation.errors.join(", ")}`
+    );
+  }
+
+  return metadata;
+}
+
+/**
+ * Example: Creating a Gmail document
+ *
+ * const gmailMetadata = createGmailMetadata({
+ *     message_id: 'msg_123',
+ *     thread_id: 'thread_456',
+ *     from: 'friend@example.com',
+ *     to: ['me@example.com'],
+ *     subject: 'Meeting Tomorrow',
+ *     labels: ['INBOX'],
+ *     snippet: 'Hey, let's meet...'
+ * });
+ *
+ * const document = createUnifiedDocument({
+ *     document_id: 'gmail_msg_123',
+ *     source: 'gmail',
+ *     type: 'email',
+ *     content: 'Full email body...',
+ *     title: 'Meeting Tomorrow',
+ *     timestamp: new Date(),
+ *     author: 'friend@example.com',
+ *     metadata: gmailMetadata
+ * });
+ */

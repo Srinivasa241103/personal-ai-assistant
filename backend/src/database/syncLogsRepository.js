@@ -195,13 +195,20 @@ export class SyncLogRepository {
      * @returns {Promise<number>} Number of deleted rows
      */
     async deleteOldLogs(daysToKeep = 30) {
+        // Validate daysToKeep is a safe number
+        const safeDaysToKeep = parseInt(daysToKeep, 10);
+        if (isNaN(safeDaysToKeep) || safeDaysToKeep < 0) {
+            throw new Error('daysToKeep must be a positive number');
+        }
+
         const query = `
             DELETE FROM sync_logs
-            WHERE sync_started_at < NOW() - INTERVAL '${daysToKeep} days'
+            WHERE sync_started_at < NOW() - INTERVAL '1 day' * $1
             RETURNING *;`;
-        
-        const { rows } = await pool.query(query);
-        
+
+        const values = [safeDaysToKeep];
+        const { rows } = await pool.query(query, values);
+
         return rows.length;
     }
 
