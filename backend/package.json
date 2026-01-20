@@ -11,10 +11,11 @@
     "start": "nodemon index.js"
   },
   "dependencies": {
+    "@google-cloud/local-auth": "^3.0.1",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
-    "googleapis": "^170.0.0",
+    "googleapis": "^170.1.0",
     "jsonwebtoken": "^9.0.3",
     "nodemon": "^3.1.11",
     "passport": "^0.7.0",
