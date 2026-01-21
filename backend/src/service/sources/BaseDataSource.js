@@ -6,7 +6,7 @@ import { logger } from "../../utils/logger.js";
  * Abstract base class for all data source connectors
  * All connectors (Gmail, Calendar, Spotify) must extend this class
  */
-export class BaseDataSource {
+export default class BaseDataSource {
   constructor(sourceName) {
     if (new.target === BaseDataSource) {
       throw new Error(

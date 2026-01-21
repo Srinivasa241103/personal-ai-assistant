@@ -12,6 +12,12 @@ const LOG_LEVELS = {
   DEBUG: "DEBUG",
 };
 
+// ANSI color codes for terminal output
+const COLORS = {
+  BLUE: "\x1b[34m",
+  RESET: "\x1b[0m",
+};
+
 class Logger {
   constructor() {
     this.level = process.env.LOG_LEVEL || "INFO";
@@ -25,7 +31,7 @@ class Logger {
     const contextStr =
       Object.keys(context).length > 0 ? JSON.stringify(context, null, 2) : "";
 
-    return `[${timestamp}] [${level}] ${message} ${contextStr}`;
+    return `${COLORS.BLUE}[${timestamp}] [${level}] ${message} ${contextStr}${COLORS.RESET}`;
   }
 
   /**

@@ -3,6 +3,22 @@ import { pool } from '../config/dbConfig.js';
 
 export class SyncLogRepository {
     /**
+     * Find sync log by ID
+     * @param {number} id
+     * @returns {Promise<Object|null>}
+     */
+    async findById(id) {
+        const query = `
+            SELECT * FROM sync_logs
+            WHERE id = $1;`;
+
+        const values = [id];
+        const { rows } = await pool.query(query, values);
+
+        return rows.length > 0 ? rows[0] : null;
+    }
+
+    /**
      * Create a new sync log entry
      * @param {string} source
      * @returns {Promise<Object>}

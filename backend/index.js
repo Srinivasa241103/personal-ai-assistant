@@ -1,19 +1,20 @@
-import dotenv from 'dotenv';
+import dotenv from "dotenv";
 dotenv.config();
+import { logger } from "./src/utils/logger.js";
 
-import app from './src/app.js';
-import {connectToDB} from './src/config/dbConfig.js';
+import app from "./src/app.js";
+import { connectToDB } from "./src/config/dbConfig.js";
 
 const PORT = process.env.PORT || 9000;
 
-
-connectToDB().then(()=>{
-    console.log('Starting server...');
+connectToDB()
+  .then(() => {
+    console.log("Starting server...");
     app.listen(PORT, () => {
-        console.log(`Server is running http://localhost:${PORT}`);
+      console.log(`Server is running http://localhost:${PORT}`);
     });
-})
-.catch((err)=>{
-    console.error('Failed to connect to the database', err);
+  })
+  .catch((err) => {
+    logger.error("Failed to connect to the database", err);
     process.exit(1);
-});
+  });

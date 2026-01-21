@@ -101,7 +101,7 @@ export class CredentialRepository {
 
     const query = `
             UPDATE api_credentials
-            SET ${setClauses.join(', ')}
+            SET ${setClauses.join(", ")}
             WHERE id = $${paramIndex}
             RETURNING *;`;
 
@@ -279,12 +279,12 @@ export class CredentialRepository {
    */
   async storeOAuthTokens(userId, source, tokenData) {
     const query = `
-      INSERT INTO credentials (
+      INSERT INTO api_credentials (
         user_id,
         source,
         access_token,
         refresh_token,
-        token_expiry,
+        token_expires_at,
         scopes,
         created_at,
         updated_at
@@ -292,8 +292,8 @@ export class CredentialRepository {
       ON CONFLICT (user_id, source)
       DO UPDATE SET
         access_token = $3,
-        refresh_token = COALESCE($4, credentials.refresh_token),
-        token_expiry = $5,
+        refresh_token = COALESCE($4, api_credentials.refresh_token),
+        token_expires_at = $5,
         scopes = $6,
         updated_at = NOW()
       RETURNING *`;
@@ -321,10 +321,10 @@ export class CredentialRepository {
     const query = `
       SELECT
         source,
-        token_expiry,
+        token_expires_at,
         scopes,
         created_at
-      FROM credentials
+      FROM api_credentials
       WHERE user_id = $1`;
 
     const values = [userId];
@@ -341,7 +341,7 @@ export class CredentialRepository {
    */
   async getUserCredentials(userId, source) {
     const query = `
-      SELECT * FROM credentials
+      SELECT * FROM api_credentials
       WHERE user_id = $1 AND source = $2`;
 
     const values = [userId, source];
@@ -358,7 +358,7 @@ export class CredentialRepository {
    */
   async deleteUserCredentials(userId, source) {
     const query = `
-      DELETE FROM credentials
+      DELETE FROM api_credentials
       WHERE user_id = $1 AND source = $2
       RETURNING *`;
 

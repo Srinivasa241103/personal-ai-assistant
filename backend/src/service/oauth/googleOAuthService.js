@@ -14,9 +14,14 @@ export class GoogleAuthService {
 
     this.credentialsRepo = new CredentialRepository();
 
-    this.encryptionKey = Buffer.from(
-      process.env.TOKEN_ENCRYPTION_KEY || crypto.randomBytes(32)
-    );
+    // AES-256 requires exactly 32 bytes (64 hex characters)
+    const keyHex = process.env.TOKEN_ENCRYPTION_KEY;
+    if (keyHex) {
+      // Take first 64 hex chars (32 bytes) and decode from hex
+      this.encryptionKey = Buffer.from(keyHex.slice(0, 64), "hex");
+    } else {
+      this.encryptionKey = crypto.randomBytes(32);
+    }
 
     //OAuth2 Client
     this.oauth2Client = new google.auth.OAuth2(
