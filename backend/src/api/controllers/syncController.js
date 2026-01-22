@@ -3,6 +3,7 @@ import { logger } from "../../utils/logger.js";
 import { GmailNormalizer } from "../../service/normalizers/GmailNormalizer.js";
 import { SyncLogRepository } from "../../database/syncLogsRepository.js";
 import { DocumentRepository } from "../../database/documentRepository.js";
+import EmbeddingPipeline from "../../service/embeddings/embeddingPipeline.js";
 
 export default class SyncController {
   constructor() {
