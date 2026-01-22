@@ -1,10 +1,9 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { logger } from "../../utils/logger.js";
-import { validateEnv } from "../../config/environment.js";
+//import { validateEnv } from "../../config/environment.js";
 
 export default class EmbeddingService {
   constructor() {
-    validateEnv(["GOOGLE_API_KEY"]);
     this.genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
     this.model = this.genAI.getGenerativeModel({
       model: process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-001",

@@ -2,7 +2,6 @@ import EmbeddingService from "./embeddingService.js";
 import { EmbeddingRepository } from "../../database/embeddingRepository.js";
 import { logger } from "../../utils/logger.js";
 import { v4 as uuidv4 } from "uuid";
-import { batch } from "googleapis/build/src/apis/batch/index.js";
 
 export default class EmbeddingPipeline {
   constructor() {

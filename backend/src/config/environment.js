@@ -21,6 +21,19 @@ function validateEnvVars() {
 }
 
 /**
+ * Validate specific environment variables
+ * @param {string[]} vars - Array of environment variable names to validate
+ */
+export function validateEnv(vars) {
+  const missing = vars.filter((varName) => !process.env[varName]);
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing required environment variables: ${missing.join(", ")}`
+    );
+  }
+}
+
+/**
  * Configuration object with all environment variables
  */
 export const config = {

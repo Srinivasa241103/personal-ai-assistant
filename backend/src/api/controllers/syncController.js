@@ -9,6 +9,7 @@ export default class SyncController {
   constructor() {
     this.documentRepo = new DocumentRepository();
     this.syncLogRepo = new SyncLogRepository();
+    this.embeddingPipeline = new EmbeddingPipeline();
   }
 
   async syncGmail(req, res) {
@@ -127,6 +128,17 @@ export default class SyncController {
       logger.info(
         `Gmail sync completed for user ${userId}: ${documentsAdded} added, ${documentsSkipped} skipped, ${documentsFailed} failed`
       );
+
+      this.embeddingPipeline
+        .processPendingEmbeddings()
+        .then((result) => {
+          logger.info("Auto-embedding completed after sync", result);
+        })
+        .catch((error) => {
+          logger.error("Auto-embedding failed after sync", {
+            error: error.message,
+          });
+        });
     } catch (syncError) {
       logger.error(`Gmail sync error for user ${userId}: ${syncError.message}`);
       await this.syncLogRepo.fail(syncLogId, syncError.message);
