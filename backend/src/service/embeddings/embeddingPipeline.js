@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 
 export default class EmbeddingPipeline {
   constructor() {
-    this.batchSize = 50;
+    this.batchSize = 20; // less to avoid rate limits
     this.embeddingRepo = new EmbeddingRepository();
     this.embeddingService = new EmbeddingService();
   }
@@ -24,7 +24,7 @@ export default class EmbeddingPipeline {
         logger.info("No documents need embedding", { batchId });
         return {
           success: true,
-          procesed: 0,
+          processed: 0,
           message: "No documents need embedding",
         };
       }
@@ -32,22 +32,28 @@ export default class EmbeddingPipeline {
         batchId,
       });
 
-      const prepareDocs = documents.map((doc) => ({
+      const preparedDocs = documents.map((doc) => ({
         ...doc,
         preparedContent: this.embeddingService.prepareText(doc.content),
       }));
 
       const results = [];
       let totalTokens = 0;
-      for (let i = 0; i < preparedDocs.length; i += 10) {
-        const batch = preparedDocs.slice(i, i + 10);
+      const batchChunkSize = 5; // Process 5 documents at a time
+
+      for (let i = 0; i < preparedDocs.length; i += batchChunkSize) {
+        const batch = preparedDocs.slice(i, i + batchChunkSize);
         const texts = batch.map((doc) => doc.preparedContent);
 
         try {
-          logger.debug(`Generating embeddings for batch`, {
-            batchIndex: Math.floor(i / 10) + 1,
-            size: batch.length,
-          });
+          logger.info(
+            `Generating embeddings for batch ${
+              Math.floor(i / batchChunkSize) + 1
+            }`,
+            {
+              size: batch.length,
+            }
+          );
           const embeddings = await this.embeddingService.embedBatch(texts);
 
           const updates = batch.map((doc, idx) => ({
@@ -56,18 +62,24 @@ export default class EmbeddingPipeline {
             tokens: embeddings[idx].tokens,
           }));
 
-          await embeddingRepository.batchUpdateEmbeddings(updates);
+          await this.embeddingRepo.batchUpdateEmbeddings(updates);
           results.push(...updates);
           totalTokens += embeddings.reduce((sum, e) => sum + e.tokens, 0);
 
-          if (i + 10 < prepareDocs.length) {
-            await this.delay(700);
+          logger.info(`Batch ${Math.floor(i / batchChunkSize) + 1} completed`, {
+            documentsProcessed: results.length,
+          });
+
+          if (i + batchChunkSize < preparedDocs.length) {
+            await this.delay(1000); // 1 second delay between batches
           }
         } catch (error) {
           logger.error("Error during embedding generation or database update", {
-            batchIndex: Math.floor(i / 10) + 1,
-            error: error.message,
+            batchIndex: Math.floor(i / batchChunkSize) + 1,
+            error: error.message || error.toString(),
+            stack: error.stack,
           });
+          // Continue with next batch instead of stopping entirely
         }
       }
 

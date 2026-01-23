@@ -98,25 +98,29 @@ class EmbeddingRepository {
     try {
       await client.query("BEGIN");
 
-      const updatePromises = updates.map(
-        ({ documentId, embedding, tokens }) => {
-          const vectorString = `[${embedding.join(",")}]`;
-          const query = `
-            UPDATE documents
-            SET
-              embedding = $1::vector,
-              embedding_generated_at = NOW(),
-              embedding_tokens = $2,
-              embedding_model = $3,
-              needs_embedding = false,
-              updated_at = NOW()
-            WHERE document_id = $4
-          `;
-          return client.query(query, [vectorString, tokens, model, documentId]);
-        }
-      );
+      for (const { documentId, embedding, tokens } of updates) {
+        const vectorString = `[${embedding.join(",")}]`;
+        const query = `
+          UPDATE documents
+          SET
+            embedding = $1::vector,
+            embedding_generated_at = NOW(),
+            embedding_tokens = $2,
+            embedding_model = $3,
+            needs_embedding = false,
+            updated_at = NOW()
+          WHERE document_id = $4
+        `;
 
-      await Promise.all(updatePromises);
+        logger.debug("Updating embedding", {
+          documentId,
+          embeddingDimensions: embedding.length,
+          tokens,
+        });
+
+        await client.query(query, [vectorString, tokens, model, documentId]);
+      }
+
       await client.query("COMMIT");
 
       logger.info("Batch updated embeddings", { count: updates.length });
@@ -125,7 +129,10 @@ class EmbeddingRepository {
     } catch (error) {
       await client.query("ROLLBACK");
       logger.error("Error in batch update embeddings", {
-        error: error.message,
+        error: error.message || error.toString(),
+        stack: error.stack,
+        code: error.code,
+        detail: error.detail,
       });
       throw error;
     } finally {

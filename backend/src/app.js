@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import authRoutes from "./api/routes/authRoutes.js";
 import syncRoutes from "./api/routes/syncRoutes.js";
 import embeddingRoutes from "./api/routes/embeddingRoutes.js";
+import CronManager from "./service/cron/cronManager.js";
 
 dotenv.config();
 
