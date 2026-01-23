@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import authRoutes from "./api/routes/authRoutes.js";
 import syncRoutes from "./api/routes/syncRoutes.js";
+import embeddingRoutes from "./api/routes/embeddingRoutes.js";
 
 dotenv.config();
 
@@ -33,5 +34,6 @@ app.get("/", (req, res) => {
 // Auth routes
 app.use("/auth", authRoutes);
 app.use("/sync", syncRoutes);
+app.use("/embedding", embeddingRoutes);
 
 export default app;
