@@ -4,7 +4,7 @@ import { logger } from "../../utils/logger.js";
 
 export default class EmbeddingService {
   constructor() {
-    this.genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+    this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     this.model = this.genAI.getGenerativeModel({
       model: process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-001",
     });
@@ -31,8 +31,10 @@ export default class EmbeddingService {
       };
     } catch (error) {
       logger.error("Error generating embedding for text", {
-        error: error.message,
+        error: error.message || error.toString(),
+        errorName: error.name,
         textLength: text.length,
+        dimensions: this.dimensions,
       });
       throw error;
     }
@@ -49,25 +51,54 @@ export default class EmbeddingService {
       return [];
     }
 
-    try {
-      // Gemini can handle multiple texts in parallel
-      const embeddings = [];
-      const batchPromises = validTexts.map((text) => this.embedText(text));
+    const results = [];
 
-      const results = await Promise.all(batchPromises);
+    // Process sequentially to avoid rate limits
+    for (let i = 0; i < validTexts.length; i++) {
+      try {
+        const result = await this.embedTextWithRetry(validTexts[i]);
+        results.push({
+          text: validTexts[i],
+          embedding: result.embedding,
+          tokens: result.tokens,
+        });
 
-      return results.map((result, index) => ({
-        text: validTexts[index],
-        embedding: result.embedding,
-        tokens: result.tokens,
-      }));
-    } catch (error) {
-      logger.error("Error generating batch embeddings", {
-        error: error.message,
-        batchSize: validTexts.length,
-      });
-      throw error;
+        // Add delay between requests to avoid rate limiting
+        if (i < validTexts.length - 1) {
+          await this.sleep(200);
+        }
+      } catch (error) {
+        logger.error("Error generating embedding for text in batch", {
+          index: i,
+          error: error.message || error.toString(),
+        });
+        throw error;
+      }
     }
+
+    return results;
+  }
+
+  async embedTextWithRetry(text, maxRetries = 3) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await this.embedText(text);
+      } catch (error) {
+        const isRateLimited = error.message?.includes("429") || error.message?.includes("quota");
+
+        if (isRateLimited && attempt < maxRetries) {
+          const delayMs = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
+          logger.warn(`Rate limited, retrying in ${delayMs}ms (attempt ${attempt}/${maxRetries})`);
+          await this.sleep(delayMs);
+        } else {
+          throw error;
+        }
+      }
+    }
+  }
+
+  sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   estimateTokens(text) {

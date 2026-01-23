@@ -59,9 +59,10 @@ export default class SyncController {
       let rawMessages;
 
       if (syncType == "full") {
+        const sinceTimestamp = Math.floor(new Date(sinceDate).getTime() / 1000);
         rawMessages = await gmailSource.fetchAll({
           maxResults: Infinity,
-          query: `after:${sinceDate}`,
+          query: `after:${sinceTimestamp}`,
         });
       } else {
         const lastSync = await this.syncLogRepo.getLastSuccessfulSync("gmail");
@@ -128,17 +129,6 @@ export default class SyncController {
       logger.info(
         `Gmail sync completed for user ${userId}: ${documentsAdded} added, ${documentsSkipped} skipped, ${documentsFailed} failed`
       );
-
-      this.embeddingPipeline
-        .processPendingEmbeddings()
-        .then((result) => {
-          logger.info("Auto-embedding completed after sync", result);
-        })
-        .catch((error) => {
-          logger.error("Auto-embedding failed after sync", {
-            error: error.message,
-          });
-        });
     } catch (syncError) {
       logger.error(`Gmail sync error for user ${userId}: ${syncError.message}`);
       await this.syncLogRepo.fail(syncLogId, syncError.message);

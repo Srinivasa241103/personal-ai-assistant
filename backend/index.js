@@ -1,20 +1,57 @@
 import dotenv from "dotenv";
 dotenv.config();
 import { logger } from "./src/utils/logger.js";
+import CronManager from "./src/service/cron/cronManager.js";
+const cronManager = new CronManager();
 
 import app from "./src/app.js";
 import { connectToDB } from "./src/config/dbConfig.js";
 
 const PORT = process.env.PORT || 9000;
+let server;
 
 connectToDB()
   .then(() => {
     console.log("Starting server...");
-    app.listen(PORT, () => {
+    server = app.listen(PORT, () => {
       console.log(`Server is running http://localhost:${PORT}`);
+      try {
+        cronManager.startAll();
+        logger.info("Cron jobs initialized successfully");
+      } catch (error) {
+        logger.error("Failed to start cron jobs", { error: error.message });
+      }
     });
   })
   .catch((err) => {
     logger.error("Failed to connect to the database", err);
     process.exit(1);
   });
+
+process.on("SIGTERM", () => {
+  logger.info("SIGTERM received, shutting down gracefully");
+  cronManager.stopAll();
+
+  if (server) {
+    server.close(() => {
+      logger.info("Server closed");
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
+  }
+});
+
+process.on("SIGINT", () => {
+  logger.info("SIGINT received, shutting down gracefully");
+  cronManager.stopAll();
+
+  if (server) {
+    server.close(() => {
+      logger.info("Server closed");
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
+  }
+});
