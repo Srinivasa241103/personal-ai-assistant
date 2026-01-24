@@ -281,6 +281,157 @@ class EmbeddingRepository {
       throw error;
     }
   }
+
+  /**
+   * Diagnose embedding pipeline issues
+   */
+  async diagnose() {
+    try {
+      // Check document counts
+      const docQuery = `
+        SELECT
+          COUNT(*) as total_documents,
+          COUNT(*) FILTER (WHERE embedding IS NOT NULL) as with_embedding,
+          COUNT(*) FILTER (WHERE embedding IS NULL) as without_embedding,
+          COUNT(*) FILTER (WHERE needs_embedding = true) as needs_embedding_true,
+          COUNT(*) FILTER (WHERE needs_embedding = false) as needs_embedding_false,
+          COUNT(*) FILTER (WHERE needs_embedding IS NULL) as needs_embedding_null,
+          COUNT(*) FILTER (WHERE content IS NULL OR content = '') as empty_content
+        FROM documents
+      `;
+      const docResult = await pool.query(docQuery);
+      const docStats = docResult.rows[0];
+
+      // Check pgvector extension
+      let pgvectorEnabled = false;
+      try {
+        const extQuery = `SELECT * FROM pg_extension WHERE extname = 'vector'`;
+        const extResult = await pool.query(extQuery);
+        pgvectorEnabled = extResult.rows.length > 0;
+      } catch (e) {
+        pgvectorEnabled = false;
+      }
+
+      // Check embedding_costs table exists
+      let costTableExists = false;
+      try {
+        const tableQuery = `
+          SELECT EXISTS (
+            SELECT FROM information_schema.tables
+            WHERE table_name = 'embedding_costs'
+          ) as exists
+        `;
+        const tableResult = await pool.query(tableQuery);
+        costTableExists = tableResult.rows[0].exists;
+      } catch (e) {
+        costTableExists = false;
+      }
+
+      // Check recent embedding activity
+      let recentActivity = null;
+      try {
+        const activityQuery = `
+          SELECT
+            COUNT(*) as count,
+            MAX(embedding_generated_at) as last_embedding
+          FROM documents
+          WHERE embedding_generated_at > NOW() - INTERVAL '24 hours'
+        `;
+        const activityResult = await pool.query(activityQuery);
+        recentActivity = activityResult.rows[0];
+      } catch (e) {
+        recentActivity = { error: e.message };
+      }
+
+      return {
+        documents: {
+          total: parseInt(docStats.total_documents),
+          withEmbedding: parseInt(docStats.with_embedding),
+          withoutEmbedding: parseInt(docStats.without_embedding),
+          needsEmbeddingTrue: parseInt(docStats.needs_embedding_true),
+          needsEmbeddingFalse: parseInt(docStats.needs_embedding_false),
+          needsEmbeddingNull: parseInt(docStats.needs_embedding_null),
+          emptyContent: parseInt(docStats.empty_content),
+        },
+        database: {
+          pgvectorEnabled,
+          costTableExists,
+        },
+        recentActivity: {
+          embeddingsLast24h: parseInt(recentActivity?.count || 0),
+          lastEmbeddingAt: recentActivity?.last_embedding || null,
+        },
+        issues: this.identifyIssues(docStats, pgvectorEnabled, costTableExists),
+      };
+    } catch (error) {
+      logger.error("Error in diagnose", { error: error.message });
+      throw error;
+    }
+  }
+
+  /**
+   * Identify potential issues
+   */
+  identifyIssues(docStats, pgvectorEnabled, costTableExists) {
+    const issues = [];
+
+    if (!pgvectorEnabled) {
+      issues.push("CRITICAL: pgvector extension is not enabled");
+    }
+
+    if (!costTableExists) {
+      issues.push("WARNING: embedding_costs table does not exist");
+    }
+
+    const needsEmbedding = parseInt(docStats.needs_embedding_true);
+    const withoutEmbedding = parseInt(docStats.without_embedding);
+
+    if (withoutEmbedding > 0 && needsEmbedding === 0) {
+      issues.push(
+        `ISSUE: ${withoutEmbedding} documents without embeddings but needs_embedding is not set to true. Run POST /embedding/mark-pending to fix.`
+      );
+    }
+
+    if (parseInt(docStats.empty_content) > 0) {
+      issues.push(
+        `WARNING: ${docStats.empty_content} documents have empty content and cannot be embedded`
+      );
+    }
+
+    if (issues.length === 0) {
+      issues.push("No issues detected");
+    }
+
+    return issues;
+  }
+
+  /**
+   * Mark all documents without embeddings as needing embedding
+   */
+  async markAllPendingForEmbedding() {
+    const query = `
+      UPDATE documents
+      SET needs_embedding = true
+      WHERE embedding IS NULL
+        AND content IS NOT NULL
+        AND content != ''
+        AND (needs_embedding IS NULL OR needs_embedding = false)
+      RETURNING document_id
+    `;
+
+    try {
+      const result = await pool.query(query);
+      logger.info("Marked documents for embedding", {
+        count: result.rows.length,
+      });
+      return result.rows.length;
+    } catch (error) {
+      logger.error("Error marking documents for embedding", {
+        error: error.message,
+      });
+      throw error;
+    }
+  }
 }
 
 export { EmbeddingRepository };

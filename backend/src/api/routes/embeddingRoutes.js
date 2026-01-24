@@ -102,4 +102,58 @@ router.post("/reprocess", async (req, res) => {
   }
 });
 
+/**
+ * GET /api/embeddings/diagnose
+ * Diagnose embedding pipeline issues
+ */
+router.get("/diagnose", async (req, res) => {
+  try {
+    const diagnosis = await embeddingRepository.diagnose();
+    const status = await embeddingPipeline.getStatus();
+
+    res.json({
+      success: true,
+      data: {
+        ...diagnosis,
+        service: status.service,
+        config: {
+          geminiApiKeySet: !!process.env.GEMINI_API_KEY,
+          embeddingModel: process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-001",
+          cronEnabled: process.env.ENABLE_EMBEDDING_CRON !== "false",
+        },
+      },
+    });
+  } catch (error) {
+    logger.error("Error in diagnose endpoint", { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/embeddings/mark-pending
+ * Mark all documents without embeddings as needing embedding
+ */
+router.post("/mark-pending", async (req, res) => {
+  try {
+    const count = await embeddingRepository.markAllPendingForEmbedding();
+
+    res.json({
+      success: true,
+      data: {
+        marked: count,
+        message: `Marked ${count} documents for embedding`
+      },
+    });
+  } catch (error) {
+    logger.error("Error in mark-pending endpoint", { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
 export default router;

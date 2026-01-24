@@ -65,7 +65,7 @@ export default class EmbeddingService {
 
         // Add delay between requests to avoid rate limiting
         if (i < validTexts.length - 1) {
-          await this.sleep(200);
+          await this.sleep(100); // Reduced from 200ms - Gemini can handle more
         }
       } catch (error) {
         logger.error("Error generating embedding for text in batch", {
