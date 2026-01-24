@@ -339,7 +339,7 @@ export default class QueryProcessor {
     }
 
     if (matchesAnyPattern(lowerQuery, this.intentPatterns.search_calendar)) {
-      return "calendar";
+      return "google_calendar";
     }
 
     if (matchesAnyPattern(lowerQuery, this.intentPatterns.search_spotify)) {
