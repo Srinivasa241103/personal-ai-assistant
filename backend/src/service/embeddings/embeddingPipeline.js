@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 
 export default class EmbeddingPipeline {
   constructor() {
-    this.batchSize = 20; // less to avoid rate limits
+    this.batchSize = 30; // Increased batch size - Gemini allows 1500 req/min
     this.embeddingRepo = new EmbeddingRepository();
     this.embeddingService = new EmbeddingService();
   }
@@ -39,7 +39,7 @@ export default class EmbeddingPipeline {
 
       const results = [];
       let totalTokens = 0;
-      const batchChunkSize = 5; // Process 5 documents at a time
+      const batchChunkSize = 10; // Process 10 documents at a time
 
       for (let i = 0; i < preparedDocs.length; i += batchChunkSize) {
         const batch = preparedDocs.slice(i, i + batchChunkSize);
@@ -71,7 +71,7 @@ export default class EmbeddingPipeline {
           });
 
           if (i + batchChunkSize < preparedDocs.length) {
-            await this.delay(1000); // 1 second delay between batches
+            await this.delay(500); // 500ms delay between batches
           }
         } catch (error) {
           logger.error("Error during embedding generation or database update", {

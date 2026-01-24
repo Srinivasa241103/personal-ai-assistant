@@ -40,7 +40,7 @@ export default class CronManager {
 
   async triggerJob(jobName) {
     if (!this.jobs[jobName]) {
-      throw new Error(`Unknown job: ${jobName}`);
+      throw new Error(`Unknown job: ${jobName}`); 
     }
 
     logger.info("Manually triggering job", { jobName });

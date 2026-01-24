@@ -91,11 +91,11 @@ export default class ConversationMemory {
       // Stop if adding would exceed token limit
       if (
         totalTokens + userTokens + assistantTokens >
-        this.maxTokensPerConversation
+        this.maxTokenPerConversation
       ) {
         logger.info("Token limit reached, truncating history", {
           totalTokens,
-          limit: this.maxTokensPerConversation,
+          limit: this.maxTokenPerConversation,
         });
         break;
       }
@@ -128,18 +128,18 @@ export default class ConversationMemory {
   }
 
   createConversationId() {
-    return `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `conv_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 
   async deleteOldConversations(daysOld = 30) {
     try {
       const query = `
             DELETE FROM conversations
-            WHERE created_at < NOW() - INTERVAL '${daysOld} days'
+            WHERE created_at < NOW() - INTERVAL $1
             RETURNING conversation_id
           `;
 
-      const result = await pool.query(query);
+      const result = await pool.query(query, [`${daysOld} days`]);
 
       logger.info("Old conversations deleted", {
         count: result.rowCount,

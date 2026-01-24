@@ -8,10 +8,10 @@ export default class EmbeddingCronJob {
   constructor() {
     this.isRunning = false;
     this.task = null;
-    this.schedule = process.env.EMBEDDING_CRON_SCHEDULE || "*/2 * * * *";
+    this.schedule = process.env.EMBEDDING_CRON_SCHEDULE || "* * * * *"; // Every minute
   }
 
-  start() {
+  start(runImmediately = true) {
     if (this.task) {
       logger.warn("Embedding cron job already running");
       return;
@@ -26,7 +26,18 @@ export default class EmbeddingCronJob {
       await this.executeJob();
     });
 
-    logger.info("Embedding cron job started");
+    logger.info("Embedding cron job started", { schedule: this.schedule });
+
+    // Run immediately on start (don't wait for first scheduled time)
+    const shouldRunImmediately = runImmediately && process.env.EMBEDDING_RUN_ON_START !== "false";
+    if (shouldRunImmediately) {
+      logger.info("Running embedding job immediately on startup");
+      this.executeJob().catch((error) => {
+        logger.error("Error in immediate embedding job execution", {
+          error: error.message,
+        });
+      });
+    }
   }
 
   async executeJob() {
