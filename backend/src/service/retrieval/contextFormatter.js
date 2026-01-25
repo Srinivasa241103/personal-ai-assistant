@@ -125,6 +125,21 @@ class ContextFormatter {
   }
 
   /**
+   * Safely format array or string values
+   * @private
+   */
+  formatArrayOrString(value) {
+    if (!value) return null;
+    if (Array.isArray(value)) {
+      return value.length > 0 ? value.join(", ") : null;
+    }
+    if (typeof value === "string") {
+      return value.trim() || null;
+    }
+    return String(value);
+  }
+
+  /**
    * Format source-specific metadata
    * @private
    */
@@ -132,32 +147,49 @@ class ContextFormatter {
     let formatted = "";
 
     if (source === "gmail" && metadata.gmail) {
-      if (metadata.gmail.to && metadata.gmail.to.length > 0) {
-        formatted += `To: ${metadata.gmail.to.join(", ")}\n`;
+      const to = this.formatArrayOrString(metadata.gmail.to);
+      if (to) {
+        formatted += `To: ${to}\n`;
       }
-      if (metadata.gmail.labels && metadata.gmail.labels.length > 0) {
-        formatted += `Labels: ${metadata.gmail.labels.join(", ")}\n`;
+      const labels = this.formatArrayOrString(metadata.gmail.labels);
+      if (labels) {
+        formatted += `Labels: ${labels}\n`;
+      }
+      // Add cc and bcc if present
+      const cc = this.formatArrayOrString(metadata.gmail.cc);
+      if (cc) {
+        formatted += `Cc: ${cc}\n`;
       }
     }
 
     if (source === "google_calendar" && metadata.calendar) {
-      if (
-        metadata.calendar.attendees &&
-        metadata.calendar.attendees.length > 0
-      ) {
-        formatted += `Attendees: ${metadata.calendar.attendees.join(", ")}\n`;
+      const attendees = this.formatArrayOrString(metadata.calendar.attendees);
+      if (attendees) {
+        formatted += `Attendees: ${attendees}\n`;
       }
       if (metadata.calendar.location) {
         formatted += `Location: ${metadata.calendar.location}\n`;
+      }
+      if (metadata.calendar.status) {
+        formatted += `Status: ${metadata.calendar.status}\n`;
       }
     }
 
     if (source === "spotify" && metadata.spotify) {
       if (metadata.spotify.artist) {
-        formatted += `Artist: ${metadata.spotify.artist}\n`;
+        const artist = this.formatArrayOrString(metadata.spotify.artist);
+        if (artist) {
+          formatted += `Artist: ${artist}\n`;
+        }
       }
       if (metadata.spotify.album) {
         formatted += `Album: ${metadata.spotify.album}\n`;
+      }
+      if (metadata.spotify.genres) {
+        const genres = this.formatArrayOrString(metadata.spotify.genres);
+        if (genres) {
+          formatted += `Genres: ${genres}\n`;
+        }
       }
     }
 

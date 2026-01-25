@@ -8,9 +8,12 @@ class GeminiService {
   constructor() {
     this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-    // Use Gemini Pro for chat (free tier)
+    // Try models in order: env var > gemini-1.5-flash > gemini-2.0-flash
+    // Note: Model availability depends on API key permissions
+    this.modelName = process.env.GEMINI_CHAT_MODEL || "gemini-2.5-flash";
+
     this.model = this.genAI.getGenerativeModel({
-      model: process.env.GEMINI_CHAT_MODEL || "gemini-1.5-flash",
+      model: this.modelName,
       generationConfig: {
         temperature: parseFloat(process.env.GEMINI_TEMPERATURE || "0.7"),
         topK: parseInt(process.env.GEMINI_TOP_K || "40"),
@@ -58,7 +61,7 @@ class GeminiService {
           total: estimateTokens(prompt) + estimateTokens(text),
         },
         duration,
-        model: process.env.GEMINI_CHAT_MODEL || "gemini-1.5-flash",
+        model: this.modelName,
       };
     } catch (error) {
       logger.error("Error generating response", {
@@ -150,7 +153,7 @@ class GeminiService {
         tokens: {
           response: estimateTokens(text),
         },
-        model: process.env.GEMINI_CHAT_MODEL || "gemini-1.5-flash",
+        model: this.modelName,
       };
     } catch (error) {
       logger.error("Error in chat", { error: error.message });
