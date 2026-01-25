@@ -319,26 +319,62 @@ class VectorSearchService {
 
   /**
    * Hybrid search combining vector similarity with keyword matching
+   * This provides better results by combining semantic and lexical matching
    */
   async hybridSearch(query, keywords = [], options = {}) {
     try {
-      const { topK = 10, filters = {}, minSimilarity = 0.4 } = options;
+      const { topK = 10, filters = {}, minSimilarity = 0.35 } = options;
 
       const safeTopK = Math.min(Math.max(1, parseInt(topK) || 10), 100);
       const queryEmbedding = await this.embedQuery(query);
 
+      logger.info("Executing hybrid search", {
+        keywordCount: keywords.length,
+        topK: safeTopK,
+        minSimilarity,
+      });
+
       const values = [`[${queryEmbedding.join(",")}]`];
       let paramIndex = 2;
 
-      // Build keyword search condition
-      let keywordCondition = "";
+      // Build keyword matching conditions for boost calculation
+      // We'll search in content, title, and author
+      const keywordBoostParts = [];
+      const keywordConditions = [];
+
       if (keywords.length > 0) {
-        const keywordPatterns = keywords.map((kw) => {
-          values.push(`%${kw}%`);
-          return `content ILIKE $${paramIndex++}`;
+        keywords.forEach((kw) => {
+          const kwParam = paramIndex;
+          values.push(`%${kw.toLowerCase()}%`);
+          paramIndex++;
+
+          // Boost: title match = 0.15, content match = 0.05, author match = 0.1
+          keywordBoostParts.push(
+            `CASE WHEN LOWER(title) LIKE $${kwParam} THEN 0.15 ELSE 0 END`,
+            `CASE WHEN LOWER(content) LIKE $${kwParam} THEN 0.05 ELSE 0 END`,
+            `CASE WHEN LOWER(COALESCE(author, '')) LIKE $${kwParam} THEN 0.10 ELSE 0 END`
+          );
+          // Include keyword matches in results even if vector similarity is lower
+          keywordConditions.push(
+            `LOWER(content) LIKE $${kwParam}`,
+            `LOWER(title) LIKE $${kwParam}`
+          );
         });
-        keywordCondition = `OR (${keywordPatterns.join(" OR ")})`;
       }
+
+      const keywordBoostExpr =
+        keywordBoostParts.length > 0
+          ? keywordBoostParts.join(" + ")
+          : "0";
+
+      const keywordOrCondition =
+        keywordConditions.length > 0
+          ? `OR (${keywordConditions.join(" OR ")})`
+          : "";
+
+      // Add minSimilarity parameter
+      values.push(minSimilarity);
+      const minSimParam = paramIndex++;
 
       let sql = `
         SELECT
@@ -351,23 +387,31 @@ class VectorSearchService {
           author,
           metadata,
           1 - (embedding <=> $1::vector) AS similarity,
-          CASE WHEN ${
-            keywords.length > 0
-              ? keywords.map((_, i) => `content ILIKE $${i + 2}`).join(" OR ")
-              : "FALSE"
-          } THEN 0.1 ELSE 0 END AS keyword_boost
+          LEAST(0.3, ${keywordBoostExpr}) AS keyword_boost
         FROM documents
         WHERE embedding IS NOT NULL
-          AND ((1 - (embedding <=> $1::vector)) >= $${paramIndex} ${keywordCondition})
+          AND (
+            (1 - (embedding <=> $1::vector)) >= $${minSimParam}
+            ${keywordOrCondition}
+          )
       `;
-
-      values.push(minSimilarity);
-      paramIndex++;
 
       // Apply filters
       if (filters.source) {
         sql += ` AND source = $${paramIndex}`;
         values.push(filters.source);
+        paramIndex++;
+      }
+
+      if (filters.author) {
+        sql += ` AND LOWER(author) LIKE $${paramIndex}`;
+        values.push(`%${filters.author.toLowerCase()}%`);
+        paramIndex++;
+      }
+
+      if (filters.potentialAuthor) {
+        sql += ` AND (LOWER(author) LIKE $${paramIndex} OR LOWER(metadata::text) LIKE $${paramIndex})`;
+        values.push(`%${filters.potentialAuthor.toLowerCase()}%`);
         paramIndex++;
       }
 
@@ -383,14 +427,37 @@ class VectorSearchService {
         paramIndex++;
       }
 
-      sql += ` ORDER BY (similarity + keyword_boost) DESC LIMIT $${paramIndex}`;
+      // Order by combined score (similarity + keyword boost)
+      sql += ` ORDER BY (1 - (embedding <=> $1::vector)) + LEAST(0.3, ${keywordBoostExpr}) DESC`;
+      sql += ` LIMIT $${paramIndex}`;
       values.push(safeTopK);
 
       const result = await pool.query(sql, values);
 
-      return this.formatResults(result.rows, true);
+      logger.info("Hybrid search completed", {
+        resultsFound: result.rows.length,
+      });
+
+      // Format results with keyword boost included
+      return result.rows.map((row) => {
+        const similarity = parseFloat(row.similarity?.toFixed(4) || 0);
+        const keywordBoost = parseFloat(row.keyword_boost?.toFixed(4) || 0);
+        return {
+          documentId: row.document_id,
+          source: row.source,
+          type: row.type,
+          content: row.content,
+          title: row.title,
+          timestamp: row.timestamp,
+          author: row.author,
+          similarity: similarity,
+          keywordBoost: keywordBoost,
+          combinedScore: similarity + keywordBoost,
+          metadata: row.metadata,
+        };
+      });
     } catch (error) {
-      logger.error("Hybrid search failed", { error: error.message });
+      logger.error("Hybrid search failed", { error: error.message, stack: error.stack });
       throw error;
     }
   }

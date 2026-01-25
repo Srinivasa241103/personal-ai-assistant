@@ -1,78 +1,172 @@
-import retrievalService from "./src/service/retrieval/retrievalService.js";
+// backend/test/test-components.js
+
 import { logger } from "./src/utils/logger.js";
+import QueryProcessor from "./src/service/retrieval/queryProcessor.js";
+import vectorSearch from "./src/service/retrieval/vectorSearch.js";
+import resultRanker from "./src/service/retrieval/resultRanker.js";
+import contextFormatter from "./src/service/retrieval/contextFormatter.js";
+import geminiService from "./src/service/llm/geminiService.js";
+import { pool } from "./src/config/dbConfig.js";
 
-async function testRetrievalPipeline() {
+async function testComponents() {
+  console.log("=== Testing Individual Components ===\n");
+
   try {
-    console.log("=== Testing Complete Retrieval Pipeline ===\n");
-
-    // Test 1: Simple query
-    console.log("Test 1: Simple query");
-    const result1 = await retrievalService.retrieve(
-      "What mails I recieved from github for personal Ai assistant repository",
-      { topN: 5 }
-    );
-
-    console.log(`Query: ${result1.query}`);
-    console.log(`Intent: ${result1.processedQuery.intent}`);
-    console.log(`Found: ${result1.metadata.totalFound} documents`);
-    console.log(`Returned: ${result1.metadata.returned} results`);
-    if (result1.results.length > 0) {
-      console.log("\nTop result:");
-      console.log(`  - Document: ${result1.results[0].documentId}`);
-      console.log(`  - Similarity: ${result1.results[0].similarity}`);
-      console.log(`  - Final Score: ${result1.results[0].finalScore}`);
-      console.log(`  - Title: ${result1.results[0].title}`);
-    } else {
-      console.log("\nNo results found");
-    }
+    // Test 1: Database Connection
+    console.log("Test 1: Database Connection");
+    const dbTest = await pool.query("SELECT NOW()");
+    console.log("✅ Database connected:", dbTest.rows[0].now);
     console.log("---\n");
 
-    // Test 2: Time-filtered query
-    console.log("Test 2: Time-filtered query");
-    const result2 = await retrievalService.retrieve(
-      "Show me emails from last week about meetings",
-      { topN: 5 }
-    );
-
-    console.log(`Query: ${result2.query}`);
+    // Test 2: Check if we have documents with embeddings
+    console.log("Test 2: Check Documents with Embeddings");
+    const docsCheck = await pool.query(`
+      SELECT 
+        COUNT(*) as total,
+        COUNT(embedding) as with_embeddings,
+        COUNT(CASE WHEN embedding IS NOT NULL THEN 1 END) * 100.0 / COUNT(*) as percentage
+      FROM documents
+    `);
+    console.log("Total documents:", docsCheck.rows[0].total);
+    console.log("With embeddings:", docsCheck.rows[0].with_embeddings);
     console.log(
-      `Time range: ${result2.processedQuery.timeRange?.label || "none"}`
+      "Percentage:",
+      parseFloat(docsCheck.rows[0].percentage).toFixed(2) + "%"
     );
-    console.log(`Found: ${result2.metadata.returned} results`);
-    if (result2.results.length > 0) {
-      console.log(`Top result title: ${result2.results[0].title}`);
+
+    if (docsCheck.rows[0].with_embeddings === "0") {
+      console.log("⚠️  WARNING: No documents have embeddings yet!");
+      console.log("   You need to run embedding generation first.");
+      console.log("   Check your embedding pipeline or sync some data.\n");
     }
     console.log("---\n");
 
-    // Test 3: With fallback (intentionally vague query)
-    console.log("Test 3: Query with automatic fallback");
-    const result3 = await retrievalService.retrieveWithFallback(
-      "xyz123", // Unlikely to match anything
-      { topN: 5 }
-    );
+    // Test 3: Query Processor
+    console.log("Test 3: Query Processor");
+    const queryProcessor = new QueryProcessor();
+    const testQuery =
+      "What was there in the mail that I recieved from ravi kumar last week";
+    const processed = await queryProcessor.process(testQuery);
 
-    console.log(`Query: ${result3.query}`);
-    console.log(`Found: ${result3.metadata.returned} results (after fallback)`);
+    console.log("Query:", testQuery);
+    console.log("Intent:", processed.intent);
+    console.log("Source:", processed.source);
+    console.log("Keywords:", processed.keywords.join(", "));
+    console.log("Time Range:", processed.timeRange?.label || "None");
+    console.log("Filters:", JSON.stringify(processed.filters, null, 2));
+    console.log("✅ Query processor working");
     console.log("---\n");
 
-    // Test 4: Explain ranking
-    if (result1.results.length > 0) {
-      console.log("Test 4: Explain ranking for top result");
-      const explanation = retrievalService.explainRanking(
-        result1,
-        result1.results[0].documentId
-      );
-      console.log(JSON.stringify(explanation, null, 2));
+    // Test 4: Gemini Embedding (Query)
+    console.log("Test 4: Gemini Query Embedding");
+    const embedding = await vectorSearch.embedQuery("test query");
+    console.log("Embedding dimensions:", embedding.length);
+    console.log(
+      "First 5 values:",
+      embedding.slice(0, 5).map((v) => v.toFixed(4))
+    );
+    console.log("✅ Gemini embedding working");
+    console.log("---\n");
+
+    // Test 5: Vector Search (if we have embeddings)
+    if (docsCheck.rows[0].with_embeddings > 0) {
+      console.log("Test 5: Vector Search");
+      const searchResults = await vectorSearch.search("meeting", {
+        topK: 3,
+        minSimilarity: 0.3,
+      });
+
+      console.log('Search query: "meeting"');
+      console.log("Results found:", searchResults.length);
+
+      if (searchResults.length > 0) {
+        console.log("\nTop result:");
+        console.log("  Document ID:", searchResults[0].documentId);
+        console.log("  Similarity:", searchResults[0].similarity.toFixed(4));
+        console.log("  Source:", searchResults[0].source);
+        console.log(
+          "  Title:",
+          searchResults[0].title?.substring(0, 50) || "N/A"
+        );
+        console.log("✅ Vector search working");
+      } else {
+        console.log("⚠️  No results found (try lowering minSimilarity)");
+      }
       console.log("---\n");
+
+      // Test 6: Result Ranker
+      if (searchResults.length > 0) {
+        console.log("Test 6: Result Ranker");
+        const ranked = resultRanker.rank(searchResults, "meeting");
+
+        console.log(
+          "Original top similarity:",
+          searchResults[0].similarity.toFixed(4)
+        );
+        console.log(
+          "After ranking - final score:",
+          ranked[0].finalScore.toFixed(4)
+        );
+        console.log("Score breakdown:");
+        console.log("  Vector:", ranked[0].scores.vector.toFixed(4));
+        console.log("  Recency:", ranked[0].scores.recency.toFixed(4));
+        console.log("  Keyword:", ranked[0].scores.keyword.toFixed(4));
+        console.log("  Source:", ranked[0].scores.source.toFixed(4));
+        console.log("  Length:", ranked[0].scores.length.toFixed(4));
+        console.log("✅ Result ranker working");
+        console.log("---\n");
+
+        // Test 7: Context Formatter
+        console.log("Test 7: Context Formatter");
+        const formatted = contextFormatter.format(
+          ranked.slice(0, 3),
+          "test query"
+        );
+
+        console.log("Documents formatted:", formatted.documents.length);
+        console.log("Context tokens:", formatted.metadata.contextTokens);
+        console.log("Total tokens:", formatted.metadata.totalTokens);
+        console.log(
+          "Within limit:",
+          formatted.metadata.withinLimit ? "✅" : "❌"
+        );
+        console.log("Context preview (first 200 chars):");
+        console.log(formatted.contextString.substring(0, 200) + "...");
+        console.log("✅ Context formatter working");
+        console.log("---\n");
+      }
     }
 
-    console.log("✅ All retrieval pipeline tests completed!");
+    // Test 8: Gemini LLM
+    console.log("Test 8: Gemini LLM Response Generation");
+    const llmResponse = await geminiService.generateResponse(
+      "Say 'Hello, I am working!' in a friendly way."
+    );
+
+    console.log("Response:", llmResponse.text);
+    console.log("Tokens used:", llmResponse.tokens.total);
+    console.log("Duration:", llmResponse.duration + "ms");
+    console.log("Model:", llmResponse.model);
+    console.log("✅ Gemini LLM working");
+    console.log("---\n");
+
+    // Test 9: Health Check
+    console.log("Test 9: Gemini Health Check");
+    const health = await geminiService.healthCheck();
+    console.log("Status:", health.status);
+    console.log("Response time:", health.responseTime + "ms");
+    console.log("✅ Health check passed");
+    console.log("---\n");
+
+    console.log("🎉 All component tests passed!\n");
   } catch (error) {
-    console.error("❌ Test failed:", error);
+    console.error("❌ Component test failed:", error.message);
+    console.error("Stack:", error.stack);
     process.exit(1);
   } finally {
+    await pool.end();
     process.exit(0);
   }
 }
 
-testRetrievalPipeline();
+testComponents();

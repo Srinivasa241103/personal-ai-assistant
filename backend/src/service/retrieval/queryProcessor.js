@@ -24,14 +24,15 @@ export default class QueryProcessor {
   constructor() {
     this.intentPatterns = {
       search_email: [
-        /\bemail\b/,
-        /\bmail\b/,
-        /\bmessage\b/,
-        /\bsent\b/,
-        /\breceived\b/,
-        /\binbox\b/,
-        /\bemail from\b/,
-        /\bmail from\b/,
+        /\bemails?\b/i,
+        /\bmail\b/i,
+        /\bmessages?\b/i,
+        /\bsent\b/i,
+        /\breceived\b/i,
+        /\binbox\b/i,
+        /\bemail from\b/i,
+        /\bmail from\b/i,
+        /\bcorrespondence\b/i,
       ],
       search_calendar: [
         "meeting",
@@ -97,14 +98,16 @@ export default class QueryProcessor {
     };
 
     // Patterns for extracting person names from queries
+    // Stop at prepositions (about, regarding, for, etc.) to avoid capturing too much
     this.personPatterns = [
-      /\bfrom\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i,
-      /\bwith\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i,
-      /\babout\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i,
-      /\bregarding\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i,
-      /\bto\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i,
-      /\bdiscuss(?:ed)?\s+with\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i,
+      /\bfrom\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)(?:\s+(?:about|regarding|for|on|in|at|to)\b)?/i,
+      /\bwith\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)(?:\s+(?:about|regarding|for|on|in|at)\b)?/i,
+      /\bto\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)(?:\s+(?:about|regarding|for|on|in|at)\b)?/i,
+      /\bdiscuss(?:ed)?\s+with\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)(?:\s+(?:about|regarding|for|on|in|at)\b)?/i,
     ];
+
+    // Prepositions that should not be part of a name
+    this.stopPrepositions = ["about", "regarding", "for", "on", "in", "at", "to", "from", "with", "by"];
   }
 
   async process(query) {
@@ -312,6 +315,15 @@ export default class QueryProcessor {
     for (const pattern of this.personPatterns) {
       const match = query.match(pattern);
       if (match && match[1]) {
+        let name = match[1].trim();
+
+        // Remove trailing prepositions if accidentally captured
+        const words = name.split(/\s+/);
+        const cleanedWords = words.filter(
+          (word) => !this.stopPrepositions.includes(word.toLowerCase())
+        );
+        name = cleanedWords.join(" ");
+
         // Filter out common words that might be caught
         const commonWords = [
           "the",
@@ -323,8 +335,8 @@ export default class QueryProcessor {
           "that",
           "it",
         ];
-        if (!commonWords.includes(match[1].toLowerCase())) {
-          return match[1];
+        if (name && !commonWords.includes(name.toLowerCase())) {
+          return name;
         }
       }
     }

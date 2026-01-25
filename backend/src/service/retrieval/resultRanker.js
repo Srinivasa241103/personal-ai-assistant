@@ -3,21 +3,25 @@ import { extractKeywords } from "../../utils/textProcessing.js";
 
 class ResultRanker {
   constructor() {
+    // Tuned weights for better relevance
+    // Higher vector weight since embeddings capture semantic meaning well
+    // Keyword match is important for exact term matching
     this.weights = {
-      vectorSimilarity: 0.5,
-      recency: 0.2,
-      keywordMatch: 0.15,
-      sourceRelevance: 0.1,
+      vectorSimilarity: 0.45,
+      recency: 0.15,
+      keywordMatch: 0.25, // Increased for better exact matching
+      sourceRelevance: 0.10,
       lengthQuality: 0.05,
     };
 
     this.sourcePriority = {
       gmail: 1.0,
-      google_calendar: 0.9,
-      spotify: 0.7,
+      google_calendar: 0.95,
+      spotify: 0.8,
     };
 
-    this.recencyDecayDays = 90;
+    // Faster decay - recent documents are more relevant
+    this.recencyDecayDays = 60;
   }
 
   rank(results, originalQuery, options = {}) {
@@ -42,6 +46,14 @@ class ResultRanker {
           originalQuery
         );
         const vectorSimilarity = result.similarity || 0;
+
+        // If hybrid search provided a keyword boost, incorporate it
+        // This ensures we don't double-count but still benefit from DB-level keyword matching
+        if (result.keywordBoost && result.keywordBoost > 0) {
+          // Blend the DB keyword boost with our calculated keyword score
+          scores.keyword = Math.min(1, scores.keyword + result.keywordBoost * 0.5);
+        }
+
         const finalScore = this.calculateFinalScore(scores, vectorSimilarity);
 
         return {
@@ -52,6 +64,7 @@ class ResultRanker {
             keyword: scores.keyword,
             source: scores.source,
             length: scores.length,
+            dbKeywordBoost: result.keywordBoost || 0,
             final: finalScore,
           },
           finalScore,
@@ -69,13 +82,14 @@ class ResultRanker {
       logger.info("Ranking completed", {
         originalCount: results.length,
         finalCount: diversified.length,
+        topScore: diversified[0]?.finalScore?.toFixed(4) || 0,
       });
 
       return diversified;
     } catch (error) {
       logger.error("Error ranking results", { error: error.message });
       // Fallback: return original results sorted by similarity
-      return results.sort((a, b) => b.similarity - a.similarity);
+      return results.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
     }
   }
 

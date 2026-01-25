@@ -4,6 +4,7 @@ import { GmailNormalizer } from "../../service/normalizers/GmailNormalizer.js";
 import { SyncLogRepository } from "../../database/syncLogsRepository.js";
 import { DocumentRepository } from "../../database/documentRepository.js";
 import EmbeddingPipeline from "../../service/embeddings/embeddingPipeline.js";
+import socketServer from "../../service/websocket/sockeService.js";
 
 export default class SyncController {
   constructor() {
@@ -55,6 +56,15 @@ export default class SyncController {
 
   async performSync(userId, syncType, syncLogId, sinceDate) {
     try {
+      // Emit: Starting sync
+      socketServer.emitSyncProgress("gmail", {
+        syncId: syncLogId,
+        status: "in_progress",
+        phase: "fetching",
+        message: "Fetching emails from Gmail...",
+        progress: 0,
+      });
+
       const gmailSource = new GmailDataSource(userId);
       let rawMessages;
 
@@ -76,16 +86,39 @@ export default class SyncController {
         `Fetched ${rawMessages.length} Gmail messages for user ${userId}`
       );
 
+      // Emit: Fetching complete, starting normalization
+      socketServer.emitSyncProgress("gmail", {
+        syncId: syncLogId,
+        status: "in_progress",
+        phase: "normalizing",
+        message: `Fetched ${rawMessages.length} emails. Processing...`,
+        progress: 25,
+        totalMessages: rawMessages.length,
+      });
+
       const normalizer = new GmailNormalizer();
       const normalizedDocs = normalizer.normalizeBatch(rawMessages, userId);
       logger.info(
         `Normalized ${normalizedDocs.length} Gmail documents for user ${userId}`
       );
 
+      // Emit: Normalization complete, starting storage
+      socketServer.emitSyncProgress("gmail", {
+        syncId: syncLogId,
+        status: "in_progress",
+        phase: "storing",
+        message: `Storing ${normalizedDocs.length} documents...`,
+        progress: 50,
+        totalDocuments: normalizedDocs.length,
+      });
+
       let documentsAdded = 0;
       let documentsFailed = 0;
       let documentsSkipped = 0;
-      for (const doc of normalizedDocs) {
+      const totalDocs = normalizedDocs.length;
+
+      for (let i = 0; i < normalizedDocs.length; i++) {
+        const doc = normalizedDocs[i];
         try {
           const existing = await this.documentRepo.findByDocumentId(
             doc.documentId
@@ -117,6 +150,21 @@ export default class SyncController {
           );
           documentsFailed++;
         }
+
+        // Emit progress every 10 documents or on last document
+        if ((i + 1) % 10 === 0 || i === totalDocs - 1) {
+          const progressPercent = 50 + Math.floor(((i + 1) / totalDocs) * 50);
+          socketServer.emitSyncProgress("gmail", {
+            syncId: syncLogId,
+            status: "in_progress",
+            phase: "storing",
+            message: `Processed ${i + 1}/${totalDocs} documents...`,
+            progress: progressPercent,
+            documentsAdded,
+            documentsSkipped,
+            documentsFailed,
+          });
+        }
       }
 
       await this.syncLogRepo.complete(syncLogId, {
@@ -129,9 +177,52 @@ export default class SyncController {
       logger.info(
         `Gmail sync completed for user ${userId}: ${documentsAdded} added, ${documentsSkipped} skipped, ${documentsFailed} failed`
       );
+
+      // Emit: Documents stored, starting embeddings
+      socketServer.emitSyncProgress("gmail", {
+        syncId: syncLogId,
+        status: "in_progress",
+        phase: "embedding_start",
+        message: "Documents stored. Starting embedding generation...",
+        progress: 60,
+        documentsAdded,
+        documentsSkipped,
+      });
+
+      // Step 2: Process ALL pending embeddings
+      logger.info("Starting embedding generation for synced documents");
+      const embeddingResult =
+        await this.embeddingPipeline.processAllPendingEmbeddings(syncLogId);
+
+      logger.info("Embedding generation completed", {
+        syncId: syncLogId,
+        embeddingsProcessed: embeddingResult.processed,
+      });
+
+      // Emit: Everything complete (sync + embeddings)
+      socketServer.emitSyncComplete("gmail", {
+        syncId: syncLogId,
+        status: "success",
+        message: "Gmail sync and embeddings completed successfully",
+        summary: {
+          totalFetched: rawMessages.length,
+          documentsAdded,
+          documentsSkipped,
+          documentsFailed,
+          embeddingsGenerated: embeddingResult.processed,
+          embeddingDuration: embeddingResult.duration,
+        },
+      });
     } catch (syncError) {
       logger.error(`Gmail sync error for user ${userId}: ${syncError.message}`);
       await this.syncLogRepo.fail(syncLogId, syncError.message);
+
+      // Emit: Sync failed
+      socketServer.emitSyncError("gmail", {
+        syncId: syncLogId,
+        message: syncError.message,
+        code: "SYNC_FAILED",
+      });
     }
   }
 
