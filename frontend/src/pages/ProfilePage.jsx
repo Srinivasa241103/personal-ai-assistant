@@ -1,28 +1,130 @@
-import { authStyles } from "../styles/auth.styles";
+import { useState, useEffect } from "react";
 import { useAuthStore } from "../store/authStore";
 import { authApi } from "../api/auth";
+import { profileSettingsStyles } from "../styles/profileSettings.styles";
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:9000";
 
 function ProfilePage({ onNavigate }) {
   const { user, logout } = useAuthStore();
+  const [activeTab, setActiveTab] = useState("general");
+  const [name, setName] = useState(user?.name || "");
+  const [email, setEmail] = useState(user?.email || "");
+  const [selectedSource, setSelectedSource] = useState("gmail");
+  const [syncHistory, setSyncHistory] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  const getInitials = (name) => {
-    if (!name) return "U";
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
+  const sources = [
+    { id: "gmail", name: "Gmail", icon: "📧", enabled: true },
+    { id: "calendar", name: "Calendar", icon: "📅", enabled: false },
+    { id: "spotify", name: "Spotify", icon: "🎵", enabled: false },
+  ];
+
+  useEffect(() => {
+    if (activeTab === "accounts") {
+      fetchSyncHistory();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (user) {
+      setName(user.name || "");
+      setEmail(user.email || "");
+    }
+  }, [user]);
+
+  const fetchSyncHistory = async () => {
+    setIsLoading(true);
+    try {
+      const userId = user?.id || user?.sub || user?.email;
+
+      const response = await fetch(
+        `${API_BASE_URL}/sync/history?userId=${userId}`,
+        {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        setSyncHistory(data.data.history);
+      }
+    } catch (error) {
+      console.error("Failed to fetch sync history:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSyncNow = async () => {
+    setIsSyncing(true);
+    try {
+      const userId = user?.id || user?.sub || user?.email;
+
+      const response = await fetch(
+        `${API_BASE_URL}/sync/${selectedSource}`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            userId,
+            syncType: "incremental",
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        setTimeout(fetchSyncHistory, 1000);
+      }
+    } catch (error) {
+      console.error("Failed to start sync:", error);
+      alert("Failed to start sync. Check console for details.");
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleLogout = async () => {
     try {
       await authApi.logout();
+      logout();
+      onNavigate("login");
     } catch (error) {
       console.error("Logout error:", error);
     }
-    logout();
-    onNavigate("chat");
+  };
+
+  const handleSaveProfile = async () => {
+    console.log("Saving profile:", { name, email });
+  };
+
+  const formatDate = (dateString) =>
+    dateString ? new Date(dateString).toLocaleString() : "N/A";
+
+  const getStatusBadge = (status) => {
+    const styles = {
+      success: profileSettingsStyles.statusSuccess,
+      in_progress: profileSettingsStyles.statusInProgress,
+      failed: profileSettingsStyles.statusFailed,
+    };
+    return styles[status] || styles.failed;
   };
 
   if (!user) {
@@ -31,79 +133,59 @@ function ProfilePage({ onNavigate }) {
   }
 
   return (
-    <div className={authStyles.page}>
-      <div className={authStyles.profileCard}>
-        <div className={authStyles.profileHeader}>
-          {user.picture ? (
-            <img
-              src={user.picture}
-              alt={user.name}
-              className={authStyles.profileAvatarImage}
-            />
-          ) : (
-            <div className={authStyles.profileAvatar}>
-              {getInitials(user.name)}
-            </div>
-          )}
-          <h1 className={authStyles.profileName}>{user.name}</h1>
-          <p className={authStyles.profileEmail}>{user.email}</p>
-        </div>
-
-        <div className={authStyles.infoSection}>
-          <div className={authStyles.infoItem}>
-            <svg
-              className={authStyles.infoIcon}
-              xmlns="http://www.w3.org/2000/svg"
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+    <div className={profileSettingsStyles.container}>
+      {/* Header */}
+      <div className={profileSettingsStyles.header}>
+        <div className={profileSettingsStyles.headerContent}>
+          <div className={profileSettingsStyles.headerLeft}>
+            <button
+              onClick={() => onNavigate("chat")}
+              className={profileSettingsStyles.backButton}
             >
-              <rect width="20" height="16" x="2" y="4" rx="2" />
-              <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-            </svg>
-            <div>
-              <p className={authStyles.infoLabel}>Email</p>
-              <p className={authStyles.infoValue}>{user.email}</p>
-            </div>
-          </div>
-
-          <div className={authStyles.infoItem}>
-            <svg
-              className={authStyles.infoIcon}
-              xmlns="http://www.w3.org/2000/svg"
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />
-            </svg>
-            <div>
-              <p className={authStyles.infoLabel}>Account</p>
-              <p className={authStyles.infoValue}>Google Account</p>
-            </div>
+              ←
+            </button>
+            <h1 className={profileSettingsStyles.headerTitle}>Settings</h1>
           </div>
         </div>
+      </div>
 
-        <button onClick={handleLogout} className={authStyles.logoutButton}>
-          Sign Out
-        </button>
+      <div className={profileSettingsStyles.content}>
+        {/* Tabs */}
+        <div className={profileSettingsStyles.tabsContainer}>
+          <button
+            onClick={() => setActiveTab("general")}
+            className={
+              activeTab === "general"
+                ? profileSettingsStyles.tabActive
+                : profileSettingsStyles.tabInactive
+            }
+          >
+            General
+          </button>
+          <button
+            onClick={() => setActiveTab("accounts")}
+            className={
+              activeTab === "accounts"
+                ? profileSettingsStyles.tabActive
+                : profileSettingsStyles.tabInactive
+            }
+          >
+            Accounts
+          </button>
+        </div>
 
-        <button
-          onClick={() => onNavigate("chat")}
-          className={authStyles.backButton}
-        >
-          Back to Chat
-        </button>
+        {/* Accounts Tab */}
+        {activeTab === "accounts" && (
+          <div className={profileSettingsStyles.section}>
+            <button
+              onClick={handleSyncNow}
+              disabled={isSyncing}
+              className={profileSettingsStyles.buttonFull}
+            >
+              {isSyncing ? "Syncing..." : "Sync Now"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

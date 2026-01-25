@@ -16,7 +16,7 @@ export const sidebarStyles = {
   logoHidden: "opacity-0 w-0 overflow-hidden",
 
   newChatButton:
-    "p-2 rounded-lg bg-indigo-600/80 hover:bg-indigo-500 transition text-white flex-shrink-0",
+    "p-2 rounded-lg bg-indigo-600/80 hover:bg-indigo-500 transition text-white flex items-center justify-center gap-2 w-full",
 
   historySection: "flex-1 overflow-y-auto px-3 py-4",
 
@@ -67,4 +67,15 @@ export const sidebarStyles = {
   profileEmail: "text-xs text-slate-400 truncate",
 
   chatIcon: "w-5 h-5 text-slate-400",
+
+  toggleButton: "p-2 rounded-lg hover:bg-slate-800 transition text-white",
+
+  newChatSection: "px-4 mb-4",
+
+  // Profile Menu Dropdown
+  profileMenu: "absolute bottom-full left-0 mb-2 w-48 bg-slate-800 border border-slate-700 rounded-lg shadow-xl overflow-hidden z-50",
+  
+  profileMenuItem: "w-full px-4 py-3 flex items-center gap-3 text-left text-white hover:bg-slate-700 transition text-sm",
+  
+  profileMenuItemDanger: "text-red-400 hover:bg-red-500/10 hover:text-red-300",
 };

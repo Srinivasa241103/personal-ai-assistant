@@ -1,14 +1,18 @@
-const API_BASE_URL = "http://localhost:2020";
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:9000";
 
 const TOKEN_KEY = "myra_auth_token";
 
 export const authApi = {
   loginWithGoogle: async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/google/login`, {
-        method: "GET",
-        credentials: "include",
-      });
+      const response = await fetch(
+        `${API_BASE_URL}/auth/google/login`,
+        {
+          method: "GET",
+          credentials: "include",
+        }
+      );
 
       if (!response.ok) {
         throw new Error("Failed to initiate Google login");
@@ -17,6 +21,7 @@ export const authApi = {
       const data = await response.json();
 
       if (data.success && data.data?.authUrl) {
+        // OAuth must redirect the browser
         window.location.href = data.data.authUrl;
       } else {
         throw new Error("Invalid response from server");
@@ -42,9 +47,7 @@ export const authApi = {
   getCurrentUser: async () => {
     const token = localStorage.getItem(TOKEN_KEY);
 
-    if (!token) {
-      return null;
-    }
+    if (!token) return null;
 
     try {
       const response = await fetch(`${API_BASE_URL}/auth/me`, {
