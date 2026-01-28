@@ -8,7 +8,7 @@ import socketServer from "./src/service/websocket/sockeService.js";
 import app from "./src/app.js";
 import { connectToDB } from "./src/config/dbConfig.js";
 
-const PORT = process.env.PORT || 9000;
+const PORT = process.env.PORT || 2020;
 let server;
 
 connectToDB()
