@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-dotenv.config();
+dotenv.config({ override: false });
 import { logger } from "./src/utils/logger.js";
 import CronManager from "./src/service/cron/cronManager.js";
 const cronManager = new CronManager();
