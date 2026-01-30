@@ -16,9 +16,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static("public"));
 
 // CORS configuration
-const allowedOrigins = process.env.CORS_ORIGIN?.split(",") || [
-  process.env.FRONTEND_URL || "http://localhost:5173",
-];
+const allowedOrigins = process.env.FRONTEND_URL || "http://localhost:5173";
 app.use(
   cors({
     origin: allowedOrigins,
