@@ -3,7 +3,7 @@ import contextFormatter from "./contextFormatter.js";
 import { logger } from "../../utils/logger.js";
 import { promptTemplates } from "../llm/index.js";
 
-export default class RAGPipeline {
+class RAGPipeline {
   constructor() {
     // RAG pipeline configuration
     this.config = {
@@ -110,3 +110,5 @@ export default class RAGPipeline {
     });
   }
 }
+
+export default new RAGPipeline();

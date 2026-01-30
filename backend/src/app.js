@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import authRoutes from "./api/routes/authRoutes.js";
 import syncRoutes from "./api/routes/syncRoutes.js";
 import embeddingRoutes from "./api/routes/embeddingRoutes.js";
+import chatRoutes from "./api/routes/chat.js";
 
 dotenv.config();
 
@@ -16,7 +17,7 @@ app.use(express.static("public"));
 
 // CORS configuration
 const allowedOrigins = process.env.CORS_ORIGIN?.split(",") || [
-  process.env.FRONTEND_URL || "http://localhost:5174",
+  process.env.FRONTEND_URL || "http://localhost:5173",
 ];
 app.use(
   cors({
@@ -35,5 +36,6 @@ app.get("/", (req, res) => {
 app.use("/auth", authRoutes);
 app.use("/sync", syncRoutes);
 app.use("/embedding", embeddingRoutes);
+app.use("/chat", chatRoutes);
 
 export default app;

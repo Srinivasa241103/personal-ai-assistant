@@ -440,8 +440,8 @@ class VectorSearchService {
 
       // Format results with keyword boost included
       return result.rows.map((row) => {
-        const similarity = parseFloat(row.similarity?.toFixed(4) || 0);
-        const keywordBoost = parseFloat(row.keyword_boost?.toFixed(4) || 0);
+        const similarity = parseFloat(parseFloat(row.similarity || 0).toFixed(4));
+        const keywordBoost = parseFloat(parseFloat(row.keyword_boost || 0).toFixed(4));
         return {
           documentId: row.document_id,
           source: row.source,

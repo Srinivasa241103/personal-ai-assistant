@@ -6,27 +6,20 @@ import { chatStyles } from "../../styles/chat.styles";
 import { useChatStore } from "../../store/chatStore";
 
 function ChatWindow() {
-  const {
-    messages,
-    isTyping,
-    sendUserMessage,
-    receiveAIMessage,
-  } = useChatStore();
+  const { messages, isTyping, sendMessage } = useChatStore();
 
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
-    if (messages.length > 0) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messages.length > 0 || isTyping) {
+      requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      });
     }
   }, [messages, isTyping]);
 
   const handleSend = (text) => {
-    sendUserMessage(text);
-
-    setTimeout(() => {
-      receiveAIMessage("This is a placeholder AI response.");
-    }, 1200);
+    sendMessage(text);
   };
 
   if (messages.length === 0) {
@@ -54,7 +47,7 @@ function ChatWindow() {
     <div className={chatStyles.chatWindow}>
       <div className={chatStyles.messages}>
         {messages.map((msg, idx) => (
-          <Message key={idx} role={msg.role} text={msg.text} />
+          <Message key={idx} role={msg.role} text={msg.text} isError={msg.isError} context={msg.context} />
         ))}
         {isTyping && <TypingIndicator />}
         <div ref={messagesEndRef} />

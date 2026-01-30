@@ -2,7 +2,7 @@ import { pool } from "../../config/dbConfig.js";
 import { logger } from "../../utils/logger.js";
 import { estimateTokens } from "../../utils/tokenCounter.js";
 
-export default class ConversationMemory {
+class ConversationMemory {
   constructor() {
     this.maxTokenPerConversation = 9000;
     this.maxMessagesPerConversation = 20;
@@ -176,3 +176,5 @@ export default class ConversationMemory {
     }
   }
 }
+
+export default new ConversationMemory();
