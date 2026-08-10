@@ -247,6 +247,10 @@ export const AgentRunSchema = z.object({
   }
 });
 
+// Added by AGT-01: every other schema in FND-02 ships a paired type, and the
+// graph state carries both of these as channels.
+export type RunBudgetLimits = z.infer<typeof RunBudgetLimitsSchema>;
+export type RunBudgetUsage = z.infer<typeof RunBudgetUsageSchema>;
 export type ActiveRunState = z.infer<typeof ActiveRunStateSchema>;
 export type InterruptRunState = z.infer<typeof InterruptRunStateSchema>;
 export type TerminalRunState = z.infer<typeof TerminalRunStateSchema>;

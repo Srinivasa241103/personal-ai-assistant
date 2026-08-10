@@ -7,3 +7,4 @@ export * from "./evidence.js";
 export * from "./actions.js";
 export * from "./verification.js";
 export * from "./memory.js";
+export * from "./supervisor.js";

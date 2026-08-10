@@ -200,9 +200,17 @@ const RawEnvSchema = z.object({
   // LangGraph checkpointing. The schema name is configuration because two
   // places must agree on it: migration 0003, which creates the tables, and the
   // checkpointer that queries them. A literal in both is a literal that drifts.
-  LANGGRAPH_CHECKPOINT_SCHEMA: z.string().trim().min(1).default(
-    DEFAULTS.LANGGRAPH_CHECKPOINT_SCHEMA,
-  ),
+  LANGGRAPH_CHECKPOINT_SCHEMA: z.string()
+    .trim()
+    .min(1)
+    // The pinned checkpointer quotes but does not escape this identifier before
+    // interpolating it into SQL. Keep the configurable test/deployment surface,
+    // but limit it to ordinary unquoted PostgreSQL identifiers.
+    .regex(
+      /^[a-z_][a-z0-9_]*$/,
+      "LANGGRAPH_CHECKPOINT_SCHEMA must be a lowercase PostgreSQL identifier",
+    )
+    .default(DEFAULTS.LANGGRAPH_CHECKPOINT_SCHEMA),
   AGENT_MAX_CHECKPOINT_BYTES: PositiveInt("AGENT_MAX_CHECKPOINT_BYTES").default(
     Number(DEFAULTS.AGENT_MAX_CHECKPOINT_BYTES),
   ),

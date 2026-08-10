@@ -6,8 +6,31 @@ import type {
   ToolCallStatus,
   ToolMode,
 } from "../../agents/contracts/index.js";
+import type { QueryResultRow } from "pg";
 import type { JsonObject, Queryable, UserId } from "./types.js";
 import { assertUserId } from "./types.js";
+
+export interface AgentRunRecord extends QueryResultRow {
+  id: string;
+  user_id: string | number;
+  conversation_id: string;
+  request_id: string;
+  flow: SupportedFlow | null;
+  status: AgentRunStatus;
+  schema_version: string;
+  flow_contract_version: string | null;
+  graph_version: string | null;
+  request_payload: unknown;
+  state: unknown;
+  budget_limits: unknown;
+  budget_usage: unknown;
+  error_code: string | null;
+  error_message: string | null;
+  started_at: Date | null;
+  completed_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
 
 export interface CreateAgentRunInput {
   id: string;
@@ -37,6 +60,20 @@ export interface CreateAgentStepInput {
   inputSummary?: JsonObject;
 }
 
+export interface UpdateAgentRunLifecycleInput {
+  userId: UserId;
+  runId: string;
+  expectedStatus: AgentRunStatus;
+  status: AgentRunStatus;
+  flow: SupportedFlow | null;
+  flowContractVersion: string | null;
+  graphVersion: string;
+  state: JsonObject;
+  budgetUsage: JsonObject;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+}
+
 export interface CreateToolCallInput {
   id: string;
   userId: UserId;
@@ -55,9 +92,9 @@ export interface CreateToolCallInput {
 export class AgentRunRepository {
   constructor(private readonly db: Queryable = getPool()) {}
 
-  async create(input: CreateAgentRunInput): Promise<Record<string, unknown>> {
+  async create(input: CreateAgentRunInput): Promise<AgentRunRecord> {
     assertUserId(input.userId);
-    const result = await this.db.query(
+    const result = await this.db.query<AgentRunRecord>(
       `INSERT INTO agent_runs (
          id, user_id, conversation_id, request_id, flow, status, schema_version,
          flow_contract_version, graph_version, request_payload, state,
@@ -83,11 +120,84 @@ export class AgentRunRepository {
     return result.rows[0];
   }
 
-  async findById(userId: UserId, runId: string): Promise<Record<string, unknown> | null> {
+  async findById(userId: UserId, runId: string): Promise<AgentRunRecord | null> {
     assertUserId(userId);
-    const result = await this.db.query(
+    const result = await this.db.query<AgentRunRecord>(
       `SELECT * FROM agent_runs WHERE id = $1 AND user_id = $2`,
       [runId, userId],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  /**
+   * Lock one tenant-scoped run for a lifecycle decision. AGT-02 performs the
+   * status check, row update, and audit append on this same transaction client,
+   * so a cancellation and a resume cannot both observe the same waiting row.
+   */
+  async findByIdForUpdate(
+    userId: UserId,
+    runId: string,
+  ): Promise<AgentRunRecord | null> {
+    assertUserId(userId);
+    const result = await this.db.query<AgentRunRecord>(
+      `SELECT * FROM agent_runs
+       WHERE id = $1 AND user_id = $2
+       FOR UPDATE`,
+      [runId, userId],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  /**
+   * Persist the searchable projection of a LangGraph checkpoint.
+   *
+   * `expectedStatus` is an optimistic guard behind the row lock used by the
+   * lifecycle service. Keeping it here as well makes the repository safe when
+   * called without that lock and turns a stale projection into a zero-row
+   * result rather than an overwrite.
+   */
+  async updateLifecycle(
+    input: UpdateAgentRunLifecycleInput,
+  ): Promise<AgentRunRecord | null> {
+    assertUserId(input.userId);
+    const result = await this.db.query<AgentRunRecord>(
+      `UPDATE agent_runs
+       SET status = $4,
+           flow = COALESCE($5, flow),
+           flow_contract_version = CASE
+             WHEN COALESCE($5, flow) IS NULL THEN NULL
+             ELSE COALESCE($6, flow_contract_version)
+           END,
+           graph_version = $7,
+           state = $8,
+           budget_usage = $9,
+           error_code = $10,
+           error_message = $11,
+           started_at = CASE
+             WHEN $4 <> 'created' THEN COALESCE(started_at, NOW())
+             ELSE started_at
+           END,
+           completed_at = CASE
+             WHEN $4 IN ('completed', 'partially_completed', 'failed', 'cancelled')
+               THEN COALESCE(completed_at, NOW())
+             ELSE completed_at
+           END,
+           updated_at = NOW()
+       WHERE id = $1 AND user_id = $2 AND status = $3
+       RETURNING *`,
+      [
+        input.runId,
+        input.userId,
+        input.expectedStatus,
+        input.status,
+        input.flow,
+        input.flowContractVersion,
+        input.graphVersion,
+        input.state,
+        input.budgetUsage,
+        input.errorCode ?? null,
+        input.errorMessage ?? null,
+      ],
     );
     return result.rows[0] ?? null;
   }
@@ -104,9 +214,9 @@ export class AgentRunRepository {
     status: AgentRunStatus;
     errorCode?: string | null;
     errorMessage?: string | null;
-  }): Promise<Record<string, unknown> | null> {
+  }): Promise<AgentRunRecord | null> {
     assertUserId(userId);
-    const result = await this.db.query(
+    const result = await this.db.query<AgentRunRecord>(
       `UPDATE agent_runs
        SET status = $3,
            error_code = $4,

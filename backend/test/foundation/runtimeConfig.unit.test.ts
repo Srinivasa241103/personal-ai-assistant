@@ -257,6 +257,22 @@ test("the checkpoint schema is configuration shared with migration 0003", () => 
   );
 });
 
+test("the checkpoint schema rejects identifiers the library cannot quote safely", () => {
+  assert.throws(
+    () =>
+      loadRuntimeConfig(
+        baseEnv({ LANGGRAPH_CHECKPOINT_SCHEMA: 'langgraph"; DROP SCHEMA public; --' }),
+      ),
+    (error: unknown) =>
+      error instanceof ConfigValidationError &&
+      error.variables.includes("LANGGRAPH_CHECKPOINT_SCHEMA"),
+  );
+  assert.throws(
+    () => loadRuntimeConfig(baseEnv({ LANGGRAPH_CHECKPOINT_SCHEMA: "UpperCase" })),
+    ConfigValidationError,
+  );
+});
+
 test("model tiers resolve and an unknown provider is rejected", () => {
   const models = loadRuntimeConfig(baseEnv()).agents.models;
 
